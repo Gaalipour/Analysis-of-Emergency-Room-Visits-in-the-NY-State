@@ -1,0 +1,65 @@
+
+## here, we want to enhance our data by 
+* Picking another dataset
+* Joining our original dataset with this new dataset based on matching year and zipcode
+
+```{r}
+library(DT)
+library(dplyr)
+```
+
+```{r}
+mydata = read.csv("ER-DataSet.csv")
+mydata 
+```
+
+```{r}
+detailed_data = read.csv("NewData_Detailed.csv")
+detailed_data
+```
+
+
+```{r}
+renamed_data = rename( mydata, 
+                       Zip = Zip.Code, PCnty = Primary.County, Dual = Dual.Eligible, 
+                       MDC = Major.Diagnostic.Category, EDC = Episode.Disease.Category, 
+        BC = Beneficiaries.with.Condition, BA = Beneficiaries.with.Admissions, 
+                   TIA = Total.Inpatient.Admissions, 
+                   TBERV = Beneficiaries.with.ER.Visits, 
+                   TERV = Total.ER.Visits)
+head(renamed_data)
+```
+
+
+
+```{r}
+joined_data = inner_join(renamed_data, selected_columns)
+(joined_data)
+```
+
+
+
+```{r}
+nrow(renamed_data) == nrow(joined_data)
+```
+
+```{r}
+per1k_data =  joined_data %>% mutate(BC = 1000*BC/TB, BA = 1000*BA/TB, TIA = 1000*TIA/TB, 
+                                       TBERV = 1000*TBERV/TB , TERV = 1000*TERV/TB) 
+  
+per1k_data
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

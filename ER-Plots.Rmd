@@ -1,0 +1,348 @@
+---
+title: "R Notebook"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+## This is the file for other dataset
+
+```{r}
+library(DT)
+mydata = read.csv("ER-DataSet.csv")
+dt = datatable(mydata)
+library(psych)
+
+describe(mydata)
+```
+
+
+
+
+
+```{r}
+unique(mydata$Major.Diagnostic.Category)
+```
+
+```{r}
+library(DT)
+MDC_freq = table(mydata$Major.Diagnostic.Category)
+#View(MDC_freq)
+library(gridExtra)
+library(grid)
+MDC_freq_df <- data.frame(MDC_freq)
+colnames(MDC_freq_df) <- c("Category", "Frequency")
+MDC_freq_df
+```
+
+```{r}
+library(ggplot2)
+myplot <- ggplot(data = MDC_freq_df, aes( Category, Frequency)) +
+  geom_bar(stat="identity")
+myplot
+```
+
+
+```{r}
+MDC_freq = table(mydata$Major.Diagnostic.Category)
+par(mar = c(9, 4, 4, 2) + .2) # addes room for rotated labales
+
+end_point = 0.5 + nrow(MDC_freq) + nrow(MDC_freq)-1 
+barplot(MDC_freq, main = " Major Diagnostic Category", col = c(1:length(MDC_freq)), las = 2)
+
+# We can use it to rotate the labels
+#text(seq(1.5,end_point,by=2), par("usr")[3]-0.25, 
+#     srt = 60, adj= 1, xpd = TRUE,
+#     labels = paste(rownames(MDC_freq)), cex=0.65)
+
+```
+
+```{r}
+library(gridExtra)
+# The next one takes so long as my data has many rows
+#mytable = tableGrob(mydata$Major.Diagnostic.Category, mydata$Episode.Disease.Category)
+#ggplot(data = MDC_freq, main = "Frequency for Major Diagnostic Category")
+```
+
+
+
+
+```{r}
+library(dplyr)
+EDC_df <- data.frame(table( mydata$Episode.Disease.Category))
+colnames(EDC_df) <- c("Episode_Category", "Freq")
+ordered_EDC = EDC_df[order(EDC_df$Freq, decreasing = TRUE), ]
+#ordered_EDC = EDC_df %>% arrange(desc(Freq)) 
+ordered_EDC
+```
+
+```{r}
+barplot(ordered_EDC$Freq[1:10], col = "blue", main = "Episode Disease Category Frequency")
+```
+
+
+
+```{r}
+my_table <- table( mydata$Episode.Disease.Category)
+#my_table
+#barplot(my_table)
+
+library(plotly)
+
+plot_ly(ordered_EDC, x = ~Episode_Category, y = ~Freq,  type = 'bar', name = "BC") %>% 
+  layout(yaxis = list(title = 'Count'), barmode = 'group')
+
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+my_select = select(mydata, Year, Beneficiaries.with.Condition, Beneficiaries.with.Admissions, 
+                   Total.Inpatient.Admissions, Beneficiaries.with.ER.Visits, Total.ER.Visits)
+
+newdata = my_select %>% group_by(Year) %>% 
+        summarise( BC = sum(Beneficiaries.with.Condition), 
+                   BA = sum(Beneficiaries.with.Admissions), 
+                   TIA = sum(Total.Inpatient.Admissions), 
+                   TBERV = sum(Beneficiaries.with.ER.Visits), 
+                   TERV = sum(Total.ER.Visits))
+newdata
+```
+
+
+
+
+```{r}
+library(plotly)
+
+plot_ly(newdata, x = ~Year, y = ~BC,  type = 'bar', name = "BC") %>% 
+  add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  add_trace(y = ~TBERV, name = "TBERV") %>% 
+  add_trace(y = ~TERV, name = "TERV") %>% 
+  layout(yaxis = list(title = 'Count'), barmode = 'group')
+
+```
+
+
+
+```{r}
+clean_data = select(mydata, -c(Major.Diagnostic.Category, Episode.Disease.Category) )
+renamed_data = rename( clean_data, Zip = Zip.Code, PCnty = Primary.County, Dual = Dual.Eligible, 
+        BC = Beneficiaries.with.Condition, BA = Beneficiaries.with.Admissions, 
+                   TIA = Total.Inpatient.Admissions, 
+                   TBERV = Beneficiaries.with.ER.Visits, 
+                   TERV = Total.ER.Visits)
+head(renamed_data)
+
+```
+
+
+
+```{r}
+library(plotly)
+plot_ly(renamed_data, x = ~Year, y = ~BC,  type = 'box', name = "BC") %>% 
+  add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  add_trace(y = ~TBERV, name = "TBERV") %>% 
+  add_trace(y = ~TERV, name = "TERV") %>% 
+  layout(yaxis = list(title = 'Count'), boxmode = 'group')
+
+```
+
+
+
+
+```{r}
+summary(renamed_data)
+```
+```{r}
+scaled_data = data.frame(renamed_data)
+scaled_data[, c(5:9)] = scale(scaled_data[,c(5:9)])
+scaled_data
+
+
+
+```
+
+
+```{r}
+library(plotly)
+plot_ly(scaled_data, x = ~Year, y = ~BC,  type = 'box', name = "BC") %>% 
+  add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  add_trace(y = ~TBERV, name = "TBERV") %>% 
+  add_trace(y = ~TERV, name = "TERV") %>% 
+  layout(yaxis = list(title = 'Count'), boxmode = 'group')
+```
+
+```{r}
+head(renamed_data)
+```
+
+```{r}
+summary(renamed_data)
+plot_ly(renamed_data, x = ~BC, y = ~BA, color = ~Dual)
+```
+```{r}
+quantile(renamed_data$BC, probs=c(.1, .9))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Normalizing our data
+### We apply different methods, see below for whic one is better
+
+```{r}
+columns = data.frame(renamed_data[ , !names(renamed_data) %in% c("Year", "Zip", "PCnty", "Dual") ] )
+head(columns)
+```
+
+```{r}
+pairs(columns)
+```
+
+```{r}
+library(GGally)
+ggpairs(columns )
+```
+
+
+```{r}
+scatterplot.matrix(~BC+BA+TIA+TBERV+TERV|Dual, data=renamed_data, 
+  	main="Three Cylinder Options")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(outliers)
+outlier(columns, opposite = FALSE, logical = FALSE)
+#anyNA(renamed_data)
+```
+```{r}
+rm.outlier(columns, fill = FALSE, median = FALSE, opposite = FALSE)
+
+outlier(columns)
+
+```
+```{r}
+lapply(columns, FUN = quantile)
+
+```
+
+```{r}
+missing_dealer <- function(x){ # X is a column data
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
+  caps <- quantile(x, probs=c(.05, .95), na.rm = T)
+  H <- 1.5 * IQR(x, na.rm = T)
+  x[x < (qnt[1] - H)] <- caps[1]
+  x[x > (qnt[2] + H)] <- caps[2]
+  
+}
+
+#lapply(columns, FUN = missing_dealer)
+lapply(columns, missing_dealer)
+```
+
+
+
+
+```{r}
+#Map(missing_dealer, columns$BC)
+x <- columns$BC
+max (x[!x %in% boxplot.stats(x)$out])
+
+```
+
+
+
+## Basic R Shiny : 
+
+
+```{r}
+
+ ## Basic R Shiny App
+library(shiny)
+library(plotly)
+library(ggplot2)
+ui <- fluidPage( 
+  radioButtons("categ", "Name of Category",
+               c("Diabetes Mellitus" ,
+                 "Diseases And Disorders Of The Cardiovascular System", 
+                 "Diseases And Disordes Of The Respiratory System", 
+                 "HIV Infection", 
+                 "Mental Diseases And Disorders",
+                 "Newborns And Other Neonates",
+                 "Substance Abuse" 
+                 )) 
+  , # Now outputs
+  plotOutput("my_plot_name")
+  
+  
+  )
+
+
+server <- function(input, output) {
+  
+  output$my_plot_name <- renderPlot({   
+      
+    MDC_EDC = select(renamed_data, MDC, EDC) %>%  filter(MDC == input$categ  )
+    MDC_EDC <- lapply(MDC_EDC, factor)
+    EDC_factor = as.factor( unlist(MDC_EDC[2])  )
+    df_EDC = data.frame(table(EDC_factor))
+    names(df_EDC) <- c("EDC_Category", "Freq")
+    plot(table(EDC_factor))
+  
+    })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+```
+
+
+
+
+### Now, let's find the HIV infection on zip code
+
+
+
+
+

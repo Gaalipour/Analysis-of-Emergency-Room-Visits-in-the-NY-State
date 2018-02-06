@@ -1,0 +1,424 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+## ui.R ##
+setwd("~/ER-Inpatient-Visitis")
+library(shiny)
+library(geojsonio)
+library(ggmap)
+library(ggplot2)
+library(zipcode)
+library(choroplethrMaps)
+library(choroplethr)
+library(dplyr)
+library(plotly)
+library(leaflet)
+library(DT)
+library(sp)
+library(raster)
+library(maptools)
+library(RColorBrewer)
+library(shinydashboard)
+library(GGally)
+```
+
+```{r}
+mydata = read.csv("./ER-DataSet.csv")
+renamed_data = rename(mydata, 
+                       Zip = Zip.Code, PCnty = Primary.County, Dual = Dual.Eligible, 
+                       MDC = Major.Diagnostic.Category, EDC = Episode.Disease.Category, 
+                      BC = Beneficiaries.with.Condition, 
+                      BA = Beneficiaries.with.Admissions, 
+                   TIA = Total.Inpatient.Admissions, 
+                   TBERV = Beneficiaries.with.ER.Visits, 
+                   TERV = Total.ER.Visits)
+(renamed_data)
+```
+
+
+
+```{r}
+detailed_data = read.csv("NewData_Detailed.csv")
+
+selected_columns = detailed_data[, c("Year", "Zip.Code", "County", "Total.Beneficiaries")] %>% 
+        rename(Zip = Zip.Code, PCnty = County, TB = Total.Beneficiaries)
+joined_data = inner_join(renamed_data, selected_columns)
+
+cnty_poplulation = detailed_data[, c("County",  "Total.Beneficiaries")] %>% 
+  group_by(County) %>% summarise(TBC = sum(Total.Beneficiaries)) %>% 
+    rename(PCnty = County)
+
+joined_data = inner_join(joined_data, cnty_poplulation)
+head(joined_data)
+```
+
+
+## MY Sider 
+```{r}
+
+mysider <- dashboardSidebar(
+    sidebarMenu(
+      menuItem("Summary", tabName = "summary", icon = icon("dashboard")),
+      menuItem("MDC Frequecny", tabName = "dashboard", icon = icon("dashboard")),
+      menuItem("MDC vs Dual", tabName = "MDC_vs_Dual", icon = icon("dashboard")),
+      menuItem("Widgets", tabName = "widgets", icon = icon("th")), 
+      menuItem("Data Summary", tabName = "mydata", icon = icon("dashboard")), 
+      menuItem("MDC vs EDC", tabName = "first", icon = icon("dashboard")), 
+      menuItem("Frequency of Attributes", tabName = "freqAttr", icon = icon("dashboard")),
+      menuItem("Map", tabName = "map", icon = icon("dashboard")), 
+      menuItem("Acknowledgment", tabName = "thanks", icon = icon("dashboard"))
+      
+    )
+  )
+```
+
+
+
+### My Tab sumamries
+
+
+```{r}
+tab_summary <- # Second tab content
+  
+  
+      tabItem(tabName = "summary",
+        
+            
+            #Url:  https://health.data.ny.gov/Health/Medicaid-Chronic-Conditions-Inpatient-Admissions-a/2yck-xisk
+            
+            h2("Summary:"), br(), 
+            "Contains information on selected chronic health conditions", br(),  
+            "Concerns the Medicaid population at the zip code level 
+            Posting Frequency: Annually
+            Organization:	Office of Quality and Patient Safety
+            Time Period	Beginning 2012 to 2014
+            Granularity:	Hospital
+            Dataset Owner: Bureau of Health Informatics", br(), 
+            
+            h2("Notes"), br(), 
+            "The data is run on all Medicaid recipients during a 12 month period", br(),
+            "Chronic conditions are identified through use of services and pharmacy", br(),
+            "Medicaid enrollees having a chronic health condition outside of the service period, 
+            are not reflected", br(),
+            "Any condition where the number of unique beneficiaries was __20__ or less were __suppressed__." , br(), 
+            
+            h2("Dimensions and Other Statistics:") , br(),
+            "Rows: 98.7K", br(),
+            "Columns: 11", 
+            div("First div"), 
+            div(class = "my-class", p("Paragraph text")), 
+            dataTableOutput("mytable_Excellus")
+
+      )        
+
+
+tab1 <- # First tab content
+      tabItem(tabName = "dashboard",
+          fluidPage(
+          plotlyOutput("plot1")
+        )
+      )
+
+
+tab_MDC_Vs_Dual <- # First tab content
+      tabItem(tabName = "MDC_vs_Dual",
+          fluidPage(
+          plotlyOutput("plot_MDC_Dual")
+        )
+      )
+
+ 
+tab2 <- # Second tab content
+      tabItem(tabName = "widgets",
+        h2("Widgets tab content")
+      )
+ 
+tab3 <- # third tab content
+      tabItem(tabName = "mydata",
+        fluidRow(
+          box(plotOutput("plot2", height = 250)),
+
+          box(
+            title = "Controls",
+            sliderInput("slider2", "Domain of Values:", 10, 100, 40)
+          )
+        )
+      )
+
+
+tab4 <- # fourth tab content
+      tabItem(tabName = "first",
+          fluidPage( 
+                  selectInput("categ", "Name of Category",
+                               c("Diabetes Mellitus" ,
+                                 "Diseases And Disorders Of The Cardiovascular System", 
+                                 "Diseases And Disordes Of The Respiratory System", 
+                                 "HIV Infection", 
+                                 "Mental Diseases And Disorders",
+                                 "Newborns And Other Neonates",
+                                 "Substance Abuse" 
+                                 )) 
+                  , # Now outputs
+                  plotlyOutput("my_plot_name")
+          )
+      )
+
+tab5 <- # fourth tab content
+      tabItem(tabName = "freqAttr",
+          basicPage(
+          #h2('The attrubutes to select'),
+          checkboxGroupInput("columns","Select Columns",
+                             choices = c("BC", "BA", "TIA", "TBERV", "TERV"), inline = T),
+          plotlyOutput("my_plot_name2")
+      
+          )
+      )
+
+
+tab_thanks <-  tabItem(tabName = "thanks",
+                       fluidPage( 
+                          h3("What I learned:"),br(),
+                          plotOutput("r_packgs"),
+                          h3("Acknoledgment"),
+                          h4("1. Data Science Team"),
+                          h4("2. Analytics and Data Department"),
+                          h4("3. Excellus BCBS"), br(), br()
+                      
+                           )
+      ) 
+
+tab_map <- # fourth tab content
+      tabItem(tabName = "map",
+       fluidPage( 
+          selectInput("attr", "Name of MDC Category",  
+               c("Diabetes Mellitus",
+                 "Diseases And Disorders Of The Cardiovascular System", 
+                 "Diseases And Disordes Of The Respiratory System" , 
+                 "HIV Infection" , 
+                 "Mental Diseases And Disorders", 
+                 "Newborns And Other Neonates", 
+                 "Substance Abuse")
+               ), # Now outputs
+          selectInput("var", "Name of Attribute",  c("BC","BA", "TIA" , "TBERV" , "TERV")),
+          leafletOutput("mymap")   
+       )
+      )
+```
+
+
+
+
+
+
+
+### My Body here 
+
+```{r}
+mybody <- # Dashboard Body
+    dashboardBody(
+    tabItems(tab_summary, tab1 , tab_MDC_Vs_Dual, tab2  , tab3, tab4, tab5 , tab_map, tab_thanks)
+    )
+
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Ghodrat's first Dashboard"),
+  mysider, mybody)
+  
+``` 
+  
+  
+### My Server here  
+  
+```{r}
+server <- function(input, output) {
+  set.seed(122)
+  histdata <- rnorm(500)
+
+output$plot1 <-   renderPlotly({ 
+    df <- data.frame(renamed_data[, "MDC"] ) 
+    colnames(df) <- c("MDC") 
+    df = df %>% group_by(MDC) %>% summarise(n()) 
+    colnames(df) <- c("MDC", "Freq")
+  
+    plot_ly(df, x = ~MDC, y = ~Freq) %>% 
+      layout(title = "Frequency of Each Categor", 
+         yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45), 
+               margin = list(b = 250))
+    })
+  
+
+
+output$plot_MDC_Dual <-   renderPlotly({ 
+    MDC_Dual = renamed_data[, c("MDC", "Dual")] %>% 
+  group_by(MDC, Dual) %>% summarise(n()) 
+colnames(MDC_Dual) = c("MDC", "Dual", "Frequency")
+plot_ly(MDC_Dual, x = ~MDC, y = ~Frequency, color = ~Dual) %>% 
+layout(title = "Frequency vs Dual Eligiblity", 
+         yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45), 
+               margin = list(b = 250))
+    })
+
+
+
+
+output$plot2 <- renderPlot({
+    data <- rnorm(input$slider2)
+    hist(data)
+    })
+
+
+
+
+  
+output$my_plot_name <- 
+    renderPlotly({   
+    MDC_EDC = renamed_data[, c("MDC", "EDC")] %>%  filter(MDC == input$categ  )
+    MDC_EDC <- lapply(MDC_EDC, factor)
+    EDC_factor = as.factor( unlist(MDC_EDC[2])  )
+    df_EDC = data.frame(table(EDC_factor))
+    names(df_EDC) <- c("EDC_Category", "Freq")
+    plot_ly(df_EDC, x = ~EDC_Category, y = ~Freq, type = 'bar',  insidetextfont = list(color = '#FFFFFF'), 
+            hoverinfo = 'text') %>% 
+    layout( title = paste("Category: ", input$categ), 
+          xaxis = list(title = "", tickangle = 45), yaxis = list(title = ""), 
+          margin = list(b = 200), 
+          font = t   )
+    })
+  
+ output$my_plot_name2 <- renderPlotly({
+
+
+      if( length(input$columns) == 0 ){
+        plot_ly() %>% layout()
+        #dfzero <- by_MDC_data[,c("MDC", "BC")]
+        #names(dfzero) <- c("MDC", "BC")
+        #plot_ly(dfzero, x = ~MDC, y = ~BC,  type = 'bar', name = "TERV") %>%
+        #  layout(title = "Total count of each Categor",
+        #      yaxis = list(title = ''), xaxis = list(title = ""), barmode = 'group')
+
+      }
+
+
+      #if(length(input$columns) == 1){
+      #  cols <- c("MDC", input$columns)
+      #  df <- data.frame(by_MDC_data[,cols])
+      #  names(df) <- c("MDC", "input_col")
+      #  plot_ly(df, x = ~MDC, y = ~input_col,  type = 'bar', name = "TERV") %>%
+      #    layout(title = "Total count of each Categor",
+      #        yaxis = list(title = ''), xaxis = list(title = "", tickangle = -90),
+      #        margin = list(b = 200), barmode = 'group')
+
+      #}
+      else{
+        cols <- c("MDC", input$columns)
+        df <- data.frame(by_MDC_data)
+        names(df) <- c("MDC", "BC", "BA", "TIA", "TBERV", "TERV")
+        df$MDC <- factor(df$MDC, levels = df[["MDC"]])
+
+        p = plot_ly(df,  x = ~MDC,  type = 'bar', name = "BC")   %>% 
+          layout( title = "Total count of each Categor",
+               yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45),
+               margin = list(b = 200),
+               barmode = 'group')
+        if ("BC" %in% cols){  p = add_trace(p, y = ~BC, name = "BC")}
+        if ("BA" %in% cols){  p = add_trace(p, y = ~BA, name = "BA")}
+        if ( "TIA" %in% cols){ p = add_trace(p, y = ~TIA, name = "TIA") }
+        if ( "TBERV" %in% cols){ p = add_trace(p, y = ~TBERV, name = "TBERV") }
+        if ( "TERV" %in% cols){ p = add_trace(p, y = ~TERV, name = "TERV") }
+
+        p
+
+      }
+
+
+    }) 
+  
+  
+ 
+ 
+ output$r_packgs = renderImage({
+          list(src = "R_Packages.png", width = 650,  height = 300)
+    }, deleteFile = FALSE) ### Not delete the file after rendering
+ 
+ 
+ 
+ 
+ output$mymap <- renderLeaflet({   
+    
+    MCD_cnty = joined_data %>% filter(MDC == input$attr) 
+    MCD_cnty = MCD_cnty %>% mutate( BC = BC*10^3/TBC, BA = BA*10^3/TBC, TIA = TIA*10^3/TBC, 
+                                    TBERV = TBERV*10^3/TBC, TERV = TERV*10^3/TBC)
+    MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+          group_by(PCnty) %>% summarise(BC = sum(BC), BA = sum(BA), 
+                                TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV)
+                                )
+    ## To keep it dafe: 
+    #MCD_cnty = renamed_data %>% filter(MDC == input$attr) 
+    #MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+    #      group_by(PCnty) %>% summarise(BC = sum(BC), BC = sum(BC), BA = sum(BA), 
+    #                            TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV))
+    
+    
+    adjusted_data <- MCD_cnty[,c("PCnty", input$var)]
+    names(adjusted_data) <- c("NAME_2", "col_name")
+    
+    
+    # get county level spatial polygons for the United States  
+    counties <- getData("GADM", country = "USA", level = 2)
+    
+    # filter down to just New York State Counties
+    counties <- counties[counties@data$NAME_1 == "New York",]
+    bins <- c(0, 25, 45, 60, 80, 170, 250, 400, 700, Inf)
+    pal <- colorBin("YlOrRd", domain = density, bins = bins)
+    
+    ## In our data we have St Lawrence but in our SP obkect we have Saint lawrence, so we 
+    ## fix it by gsub()
+    adjusted_data$NAME_2 = gsub("St Lawrence", "Saint Lawrence", adjusted_data$NAME_2)
+    counties@data = left_join(counties@data, adjusted_data)
+    
+    
+    
+    #pal <- brewer.pal(15, "YlGnBu")
+    
+    
+    
+    state_popup <- paste0("<strong>County: </strong>", 
+                          counties$NAME_2, 
+                          "<br><strong>MDC category : </strong>",  input$attr, 
+                          "<br><strong> Value per 1K : </strong>", round(counties$col_name, 3) ) 
+    
+    counties %>% leaflet() %>% addTiles() %>% 
+      addPolygons(
+          fillColor = ~pal(col_name), 
+            weight = 2,
+            opacity = 1,
+            color = "blue", # we can change it or remove it
+            dashArray = "3",
+            fillOpacity = 0.7,
+            highlight = highlightOptions(
+              weight = 5,
+              color = "#666",
+              dashArray = "",
+              fillOpacity = 0.7,
+              bringToFront = TRUE), 
+          popup = state_popup
+      ) %>% 
+      
+      addLegend("bottomright", pal = pal, values = ~col_name,
+          title = ,
+          #labFormat = labelFormat(prefix = "$"),
+          opacity = 1   
+          )
+    
+    })
+  
+  
+  
+  }
+
+shinyApp(ui, server)
+
+```
+

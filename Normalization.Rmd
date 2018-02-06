@@ -1,0 +1,408 @@
+---
+title: "R Notebook"
+output:
+  html_notebook: default
+  html_document: default
+---
+```{r}
+library(DT)
+library(dplyr)
+mydata = read.csv("ER-DataSet.csv")
+mydata 
+
+```
+## Reading another dataset
+```{r}
+detailed_data = read.csv("NewData_Detailed.csv")
+detailed_data
+```
+
+
+
+
+
+```{r}
+library(dplyr)
+renamed_data = rename( mydata, 
+                       Zip = Zip.Code, PCnty = Primary.County, Dual = Dual.Eligible, 
+                       MDC = Major.Diagnostic.Category, EDC = Episode.Disease.Category, 
+                      BC = Beneficiaries.with.Condition, 
+                      BA = Beneficiaries.with.Admissions, 
+                   TIA = Total.Inpatient.Admissions, 
+                   TBERV = Beneficiaries.with.ER.Visits, 
+                   TERV = Total.ER.Visits)
+(renamed_data)
+
+```
+
+```{r}
+library(corrplot)
+corrplot(   cor(renamed_data[c("BC", "BA", "TIA", "TBERV", "TERV")])  )
+```
+
+```{r}
+d_stan = as.data.frame(scale(renamed_data[c("BC", "BA", "TIA", "TBERV", "TERV")]))
+res1b = factanal(d_stan, factors = 2, rotation = "none", na.action = na.omit)
+res1b$loadings
+```
+
+
+
+
+```{r}
+selected_columns = select(detailed_data, Year, Zip.Code, County, Total.Beneficiaries) %>% 
+        rename(Zip = Zip.Code, PCnty = County, TB = Total.Beneficiaries)
+(selected_columns)
+
+```
+
+
+#### Merging two datasets
+
+```{r}
+joined_data = inner_join(renamed_data, selected_columns)
+(joined_data)
+```
+
+```{r}
+nrow(renamed_data) == nrow(joined_data)
+```
+### Making values per 1000
+```{r}
+per1k_data =  joined_data %>% mutate(BC = 1000*BC/TB, BA = 1000*BA/TB, TIA = 1000*TIA/TB, 
+                                       TBERV = 1000*TBERV/TB , TERV = 1000*TERV/TB) 
+  
+per1k_data
+```
+
+
+
+
+
+```{r}
+#Map(missing_dealer, columns$BC)
+
+outlier_out_data = filter(joined_data, !BC%in% boxplot.stats(BC)$out, 
+               !BA%in% boxplot.stats(BA)$out, 
+               !TIA%in% boxplot.stats(TIA)$out, 
+               !TBERV%in% boxplot.stats(TBERV)$out,
+               !TERV%in% boxplot.stats(TERV)$out
+               )
+#sapply(mynew, max)
+```
+
+```{r}
+outlier_out_data
+```
+
+
+
+
+
+
+
+```{r}
+library(dplyr)
+select(outlier_out_data, BC, BA, TIA, TBERV, TERV, TB) %>% sapply(mean) %>% round(2)
+```
+
+
+```{r}
+library(plotly)
+plot_ly(outlier_out_data, x = ~Year, y = ~BC,  type = 'box', name = "BC") %>% 
+  add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  add_trace(y = ~TBERV, name = "TBERV") %>% 
+  add_trace(y = ~TERV, name = "TERV") %>% 
+  layout(yaxis = list(title = ''), boxmode = 'group')
+
+```
+
+
+
+
+```{r}
+ 
+by_MDC_data = select(renamed_data, -c(Zip, EDC, Year, PCnty, Dual)) %>% 
+  group_by(MDC) %>% 
+        summarise( BC = sum(BC), BA = sum(BA), 
+                   TIA = sum(TIA), 
+                   TBERV = sum(TBERV), 
+                   TERV = sum(TERV))
+(by_MDC_data)
+
+
+```
+
+
+```{r}
+library(plotly)
+plot_ly(by_MDC_data, x = ~MDC, y = ~TERV,  type = 'bar', name = "TERV") %>% 
+  #add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  #add_trace(y = ~TBERV, name = "TBERV") %>% 
+  #add_trace(y = ~BC, name = "BC") %>% 
+  layout(title = "Total count of each Categor", 
+         yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45), 
+               margin = list(b = 250), barmode = 'group')
+
+```
+
+
+
+
+
+
+```{r}
+ 
+by_Dual_data = select(renamed_data, -c(Zip, MDC, EDC, Year, PCnty)) %>% 
+  group_by(Dual) %>% 
+        summarise( BC = sum(BC), BA = sum(BA), 
+                   TIA = sum(TIA), 
+                   TBERV = sum(TBERV), 
+                   TERV = sum(TERV))
+(by_Dual_data)
+
+
+```
+
+
+```{r}
+library(plotly)
+
+t <- list(  family = "sans serif",   size = 14,   color = 'blue')
+
+plot_ly(by_Dual_data, x = ~Dual, y = ~BC,  type = 'bar', name = "BC") %>% 
+  add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  add_trace(y = ~TBERV, name = "TBERV") %>% 
+  add_trace(y = ~TERV, name = "TERV") %>% 
+  layout( title = "Population Count", 
+          font = t, 
+          yaxis = list(title = ''), xaxis = list(title = ""), barmode = 'group') 
+
+```
+
+
+
+```{r}
+library(plotly)
+
+
+(by_MDC_data)
+plot_ly(by_Dual_data, labels = ~Dual, values = ~TERV, type = 'pie',
+        textposition = 'inside',
+        textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'),
+        hoverinfo = 'text')
+
+```
+
+```{r}
+
+library(plotly)
+
+
+
+MDC_Dual = renamed_data[, c("MDC", "Dual")] %>% 
+  group_by(MDC, Dual) %>% summarise(n()) 
+colnames(MDC_Dual) = c("MDC", "Dual", "Frequency")
+plot_ly(MDC_Dual, x = ~MDC, y = ~Frequency, color = ~Dual)
+
+
+```
+
+
+
+
+
+
+### Now, we want to find the tables for the MDC and EDC columns:
+#### Some properties 
+* 7 MDC
+* 70 EDC 
+    + Each EDC belongs to a uniq MDC
+
+
+
+
+```{r}
+
+library(plotly)
+
+t <- list(family = "sans serif", size = 14, color = 'blue') 
+
+
+plot_ly(df_EDC, labels = ~EDC_Category, values = ~Freq, type = 'pie',
+        textposition = 'inside',  textinfo = 'label+percent',
+        insidetextfont = list(color = '#FFFFFF'), hoverinfo = 'text') %>% 
+  layout( title = "Category: Diabetes Mellitus ",    font = t   )
+
+
+```
+
+```{r}
+
+summary(outlier_out_data[5])
+```
+
+
+
+
+## Now we build our R Shiny App: 
+
+
+
+
+
+```{r}
+library(shiny)
+library(plotly)
+library(ggplot2)
+ui <- fluidPage( 
+  selectInput("categ", "Name of Category",
+               c("Diabetes Mellitus" ,
+                 "Diseases And Disorders Of The Cardiovascular System", 
+                 "Diseases And Disordes Of The Respiratory System", 
+                 "HIV Infection", 
+                 "Mental Diseases And Disorders",
+                 "Newborns And Other Neonates",
+                 "Substance Abuse" 
+                 )) 
+  , # Now outputs
+  plotlyOutput("my_plot_name")
+  
+  
+  )
+
+
+server <- function(input, output) {
+  
+  output$my_plot_name <- renderPlotly({   
+      
+    MDC_EDC = select(renamed_data, MDC, EDC) %>%  filter(MDC == input$categ  )
+    MDC_EDC <- lapply(MDC_EDC, factor)
+    EDC_factor = as.factor( unlist(MDC_EDC[2])  )
+    df_EDC = data.frame(table(EDC_factor))
+    names(df_EDC) <- c("EDC_Category", "Freq")
+    
+    plot_ly(df_EDC, x = ~EDC_Category, y = ~Freq, type = 'bar',  insidetextfont = list(color = '#FFFFFF'), hoverinfo = 'text') %>% 
+  layout( title = paste("Category: ", input$categ), 
+          xaxis = list(title = "", tickangle = 45), yaxis = list(title = ""), 
+          margin = list(b = 200), 
+          font = t   )
+      })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+library(GGally)
+
+columns = data.frame(renamed_data[ , !names(renamed_data) %in% 
+                                     c("MDC", "EDC","Year", "Zip", "PCnty", "Dual") ] )
+ggpairs(columns )
+```
+
+
+```{r}
+
+library(shiny)
+
+
+runApp(list(
+  ui = basicPage(
+    #h2('The attrubutes to select'),
+    checkboxGroupInput("columns","Select Columns",
+                       choices = c("BC", "BA", "TIA", "TBERV", "TERV"), inline = T),
+    plotlyOutput("my_plot_name")
+
+
+  ),
+  server = function(input, output) {
+    
+    
+    output$my_plot_name <- renderPlotly({
+      
+      
+      if( length(input$columns) == 0 ){
+        plot_ly() %>% layout()
+        #dfzero <- by_MDC_data[,c("MDC", "BC")]
+        #names(dfzero) <- c("MDC", "BC")
+        #plot_ly(dfzero, x = ~MDC, y = ~BC,  type = 'bar', name = "TERV") %>% 
+        #  layout(title = "Total count of each Categor", 
+        #      yaxis = list(title = ''), xaxis = list(title = ""), barmode = 'group')
+
+      } 
+      
+     
+      #if(length(input$columns) == 1){
+      #  cols <- c("MDC", input$columns)
+      #  df <- data.frame(by_MDC_data[,cols])
+      #  names(df) <- c("MDC", "input_col")
+      #  plot_ly(df, x = ~MDC, y = ~input_col,  type = 'bar', name = "TERV") %>% 
+      #    layout(title = "Total count of each Categor", 
+      #        yaxis = list(title = ''), xaxis = list(title = "", tickangle = -90), 
+      #        margin = list(b = 200), barmode = 'group')
+
+      #}
+      #else{
+        cols <- c("MDC", input$columns)
+        df <- data.frame(by_MDC_data)
+        names(df) <- c("MDC", "BC", "BA", "TIA", "TBERV", "TERV")
+        df$MDC <- factor(df$MDC, levels = df[["MDC"]])
+        
+        p = plot_ly(df,  x = ~MDC, type = 'bar', name = "BC")   %>% 
+          layout( title = "Total count of each Categor", 
+               yaxis = list(title = ''), xaxis = list(title = "", tickangle = -45), 
+               margin = list(b = 200),
+               barmode = 'group')
+        if ("BC" %in% cols){  p = add_trace(p, y = ~BC, name = "BC")}
+        if ("BA" %in% cols){  p = add_trace(p, y = ~BA, name = "BA")} 
+        if ( "TIA" %in% cols){ p = add_trace(p, y = ~TIA, name = "TIA") }
+        if ( "TBERV" %in% cols){ p = add_trace(p, y = ~TBERV, name = "TBERV") } 
+        if ( "TERV" %in% cols){ p = add_trace(p, y = ~TERV, name = "TERV") }
+        
+        p
+
+      #}
+
+
+    })
+
+  }
+))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

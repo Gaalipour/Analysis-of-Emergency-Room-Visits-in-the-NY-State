@@ -1,0 +1,28 @@
+---
+title: "Medicaid Chronic Conditions, Inpatient Admissions and Emergency Room Visits by Zip Code: Beginning 2012"
+output: html_document
+runtime: shiny
+---
+
+
+Url:  https://health.data.ny.gov/Health/Medicaid-Chronic-Conditions-Inpatient-Admissions-a/2yck-xisk
+
+### Summary: 
+* Contains information on selected chronic health conditions 
+* Concerns the Medicaid population at the zip code level 
+* Posting Frequency: Annually
+* Organization:	Office of Quality and Patient Safety
+* Time Period	Beginning 2012 to 2014
+* Granularity:	Hospital
+* Dataset Owner: Bureau of Health Informatics
+
+
+### Notes: 
+* The data is run on all Medicaid recipients during a 12 month period
+* Chronic conditions are identified through use of services and pharmacy
+* Medicaid enrollees having a chronic health condition outside of the service period, are not reflected
+* Any condition where the number of unique beneficiaries was __20__ or less were __suppressed__. 
+
+### Dimensions and Other Statistics: 
+* Rows: 98.7K
+* Columns: 11

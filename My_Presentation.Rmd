@@ -1,0 +1,533 @@
+---
+title: "Medicaid Chronic Conditions, Inpatient Admissions and Emergency Room Visits by Zip Code: Beginning 2012"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+
+Url:  https://health.data.ny.gov/Health/Medicaid-Chronic-Conditions-Inpatient-Admissions-a/2yck-xisk
+
+### Summary: 
+* Contains information on selected chronic health conditions 
+* Concerns the Medicaid population at the zip code level 
+* Posting Frequency: Annually
+* Organization:	Office of Quality and Patient Safety
+* Time Period	Beginning 2012 to 2014
+* Granularity:	Hospital
+* Dataset Owner: Bureau of Health Informatics
+
+
+### Notes: 
+* The data is run on all Medicaid recipients during a 12 month period
+* Chronic conditions are identified through use of services and pharmacy
+* Medicaid enrollees having a chronic health condition outside of the service period, are not reflected
+* Any condition where the number of unique beneficiaries was __20__ or less were __suppressed__. 
+
+### Dimensions and Other Statistics: 
+* Rows: 98.7K
+* Columns: 11
+
+```{r message = FALSE}
+setwd("~/ER-Inpatient-Visitis")
+library(shiny)
+library(geojsonio)
+library(ggmap)
+library(ggplot2)
+library(zipcode)
+library(choroplethrMaps)
+library(choroplethr)
+library(dplyr)
+library(plotly)
+library(leaflet)
+library(DT)
+library(sp)
+library(raster)
+library(maptools)
+library(RColorBrewer)
+```
+
+
+```{r}
+mydata = read.csv("./ER-DataSet.csv")
+mydata 
+```
+
+
+## County enrollment missing!
+
+
+```{r}
+renamed_data = rename(mydata, 
+                       Zip = Zip.Code, PCnty = Primary.County, Dual = Dual.Eligible, 
+                       MDC = Major.Diagnostic.Category, EDC = Episode.Disease.Category, 
+                      BC = Beneficiaries.with.Condition, 
+                      BA = Beneficiaries.with.Admissions, 
+                   TIA = Total.Inpatient.Admissions, 
+                   TBERV = Beneficiaries.with.ER.Visits, 
+                   TERV = Total.ER.Visits)
+(renamed_data)
+
+```
+
+
+```{r}
+(summary(renamed_data[c("Dual", "BC", "BA", "TIA", "TBERV", "TERV")]) )
+```
+
+
+
+
+
+```{r}
+outlier_out_data = filter(renamed_data, !BC%in% boxplot.stats(BC)$out,
+               !BA%in% boxplot.stats(BA)$out,
+               !TIA%in% boxplot.stats(TIA)$out,
+               !TBERV%in% boxplot.stats(TBERV)$out,
+               !TERV%in% boxplot.stats(TERV)$out
+               )
+
+plot_ly(outlier_out_data, x = ~Year, y = ~BC,  type = 'box', name = "BC") %>%
+  add_trace(y = ~BA, name = "BA") %>%
+  add_trace(y = ~TIA, name = "TIA") %>%
+  add_trace(y = ~TBERV, name = "TBERV") %>%
+  add_trace(y = ~TERV, name = "TERV") %>%
+  layout(yaxis = list(title = ''), boxmode = 'group')
+
+```
+
+
+```{r}
+library(GGally)
+columns = data.frame(renamed_data[ , !names(renamed_data) %in% c("Year", "MDC", "EDC", "Zip", "PCnty", "Dual") ] )
+ggpairs(columns )
+```
+
+
+```{r}
+library(corrplot)
+corrplot(   cor(renamed_data[c("BC", "BA", "TIA", "TBERV", "TERV")])  )
+```
+
+
+```{r}
+d_stan = as.data.frame(scale(renamed_data[c("BC", "BA", "TIA", "TBERV", "TERV")]))
+res1b = factanal(d_stan, factors = 2, rotation = "none", na.action = na.omit)
+res1b$loadings
+```
+
+```{r}
+summary(renamed_data[5])
+```
+```{r}
+
+ax_data = renamed_data
+levels(ax_data$MDC) <- c("Diabetes", "Cardiovascular", "Respiratory ", 
+        
+                                          "HIV", "Mental", "Newborns", "Subtnc-Abuse")
+plot_ly(ax_data, x = ~MDC) %>% 
+  layout(title = "Frequency of Each Categor", 
+         yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45), 
+               margin = list(b = 250))
+```
+
+
+```{r}
+plot_ly(renamed_data, x = ~MDC) %>% 
+  layout(title = "Frequency of Each Categor", 
+         yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45), 
+               margin = list(b = 250))
+```
+
+
+
+
+```{r}
+
+MDC_Dual = renamed_data[, c("MDC", "Dual")] %>% 
+  group_by(MDC, Dual) %>% summarise(n()) 
+colnames(MDC_Dual) = c("MDC", "Dual", "Frequency")
+levels(MDC_Dual$MDC) <- c("Diabetes", "Cardiovascular", "Respiratory ", 
+        
+                                          "HIV", "Mental", "Newborns", "Subtnc-Abuse")
+plot_ly(MDC_Dual, x = ~MDC, y = ~Frequency, color = ~Dual) %>% 
+layout(title = "Frequency vs Dual Eligiblity", 
+         yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45), 
+               margin = list(b = 250))
+```
+
+```{r}
+
+by_Dual_data = renamed_data[, c("Dual", "BC", "BA", "TIA", "TBERV", "TERV")] %>% 
+  group_by(Dual) %>% 
+        summarise( BC = sum(BC), BA = sum(BA), 
+                   TIA = sum(TIA), 
+                   TBERV = sum(TBERV), 
+                   TERV = sum(TERV))
+t <- list(  family = "sans serif",   size = 14,   color = 'blue')
+
+plot_ly(by_Dual_data, x = ~Dual, y = ~BC,  type = 'bar', name = "BC") %>% 
+  add_trace(y = ~BA, name = "BA") %>% 
+  add_trace(y = ~TIA, name = "TIA") %>% 
+  add_trace(y = ~TBERV, name = "TBERV") %>% 
+  add_trace(y = ~TERV, name = "TERV") %>% 
+  layout( title = "Population Count", 
+          font = t, 
+          yaxis = list(title = ''), xaxis = list(title = ""), barmode = 'group') 
+```
+
+
+
+
+
+```{r}
+
+ui <- fluidPage( 
+  selectInput("categ", "Name of Category",
+               c("Diabetes Mellitus" ,
+                 "Diseases And Disorders Of The Cardiovascular System", 
+                 "Diseases And Disordes Of The Respiratory System", 
+                 "HIV Infection", 
+                 "Mental Diseases And Disorders",
+                 "Newborns And Other Neonates",
+                 "Substance Abuse" 
+                 )) 
+  , # Now outputs
+  plotlyOutput("my_plot_name")
+  
+ 
+  )
+
+
+ server <- function(input, output) {
+  
+  output$my_plot_name <- 
+    
+    renderPlotly({   
+      
+    MDC_EDC = renamed_data[, c("MDC", "EDC")] %>%  filter(MDC == input$categ  )
+    MDC_EDC <- lapply(MDC_EDC, factor)
+    EDC_factor = as.factor( unlist(MDC_EDC[2])  )
+    df_EDC = data.frame(table(EDC_factor))
+    names(df_EDC) <- c("EDC_Category", "Freq")
+    
+    plot_ly(df_EDC, x = ~EDC_Category, y = ~Freq, type = 'bar',  insidetextfont = list(color = '#FFFFFF'), hoverinfo = 'text') %>% 
+  layout( title = paste("Category: ", input$categ), 
+          xaxis = list(title = "", tickangle = 45), yaxis = list(title = ""), 
+          margin = list(b = 200), 
+          font = t   )
+      })
+  
+ }
+
+
+ shinyApp(server = server, ui = ui)
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+
+
+
+runApp(list(
+  ui = basicPage(
+    #h2('The attrubutes to select'),
+    checkboxGroupInput("columns","Select Columns",
+                       choices = c("BC", "BA", "TIA", "TBERV", "TERV"), inline = T),
+    plotlyOutput("my_plot_name")
+
+
+  ),
+  server = function(input, output) {
+
+
+    output$my_plot_name <- renderPlotly({
+
+
+      if( length(input$columns) == 0 ){
+        plot_ly() %>% layout()
+        #dfzero <- by_MDC_data[,c("MDC", "BC")]
+        #names(dfzero) <- c("MDC", "BC")
+        #plot_ly(dfzero, x = ~MDC, y = ~BC,  type = 'bar', name = "TERV") %>%
+        #  layout(title = "Total count of each Categor",
+        #      yaxis = list(title = ''), xaxis = list(title = ""), barmode = 'group')
+
+      }
+
+
+      #if(length(input$columns) == 1){
+      #  cols <- c("MDC", input$columns)
+      #  df <- data.frame(by_MDC_data[,cols])
+      #  names(df) <- c("MDC", "input_col")
+      #  plot_ly(df, x = ~MDC, y = ~input_col,  type = 'bar', name = "TERV") %>%
+      #    layout(title = "Total count of each Categor",
+      #        yaxis = list(title = ''), xaxis = list(title = "", tickangle = -90),
+      #        margin = list(b = 200), barmode = 'group')
+
+      #}
+      else{
+        cols <- c("MDC", input$columns)
+        df <- data.frame(by_MDC_data)
+        names(df) <- c("MDC", "BC", "BA", "TIA", "TBERV", "TERV")
+        df$MDC <- factor(df$MDC, levels = df[["MDC"]])
+
+        p = plot_ly(df,  x = ~MDC,  type = 'bar', name = "BC")   %>% 
+          layout( title = "Total count of each Categor",
+               yaxis = list(title = ''), xaxis = list(title = "", tickangle = 45),
+               margin = list(b = 200),
+               barmode = 'group')
+        if ("BC" %in% cols){  p = add_trace(p, y = ~BC, name = "BC")}
+        if ("BA" %in% cols){  p = add_trace(p, y = ~BA, name = "BA")}
+        if ( "TIA" %in% cols){ p = add_trace(p, y = ~TIA, name = "TIA") }
+        if ( "TBERV" %in% cols){ p = add_trace(p, y = ~TBERV, name = "TBERV") }
+        if ( "TERV" %in% cols){ p = add_trace(p, y = ~TERV, name = "TERV") }
+
+        p
+
+      }
+
+
+    })
+
+  }
+))
+```
+
+
+
+```{r}
+detailed_data = read.csv("NewData_Detailed.csv")
+detailed_data
+```
+
+```{r}
+selected_columns = detailed_data[, c("Year", "Zip.Code", "County", "Total.Beneficiaries")] %>% 
+        rename(Zip = Zip.Code, PCnty = County, TB = Total.Beneficiaries)
+joined_data = inner_join(renamed_data, selected_columns)
+
+cnty_poplulation = detailed_data[, c("County",  "Total.Beneficiaries")] %>% 
+  group_by(County) %>% summarise(TBC = sum(Total.Beneficiaries)) %>% 
+    rename(PCnty = County)
+
+joined_data = inner_join(joined_data, cnty_poplulation)
+head(joined_data)
+```
+
+
+
+
+
+
+```{r}
+by_cnty_data = renamed_data[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")]%>% 
+  group_by(PCnty) %>% 
+        summarise( BC = sum(BC), BA = sum(BA), 
+                   TIA = sum(TIA), 
+                   TBERV = sum(TBERV), 
+                   TERV = sum(TERV))
+(by_cnty_data)
+
+```
+
+### Combine Chroplothe and ShinyApp
+
+```{r}
+
+ui <- fluidPage( 
+  radioButtons("attr", "Name of Attribute",  c("BC","BA", "TIA" , "TBERV" , "TERV"), inline = TRUE), # Now outputs
+  leafletOutput("mymap")   
+  )
+
+
+
+server <- function(input, output) {
+  
+  output$mymap <- renderLeaflet({   
+    
+    
+    adjusted_data <- by_cnty_data[,c("PCnty", input$attr)]
+    names(adjusted_data) <- c("NAME_2", "col_name")
+    
+    
+    # get county level spatial polygons for the United States  
+    counties <- getData("GADM", country = "USA", level = 2)
+    
+    # filter down to just New York State Counties
+    counties <- counties[counties@data$NAME_1 == "New York",]
+    bins <- c(0, 10, 20, 50, 100, 200, 500, 1000, Inf)
+    pal <- colorBin("YlOrRd", domain = density, bins = bins)
+    
+    ## In our data we have St Lawrence but in our SP obkect we have Saint lawrence, so we 
+    ## fix it by gsub()
+    adjusted_data$NAME_2 = gsub("St Lawrence", "Saint Lawrence", adjusted_data$NAME_2)
+    counties@data = left_join(counties@data, adjusted_data)
+    
+    
+    
+    
+    state_popup <- paste0("<strong>County: </strong>", 
+                          counties$NAME_2, 
+                          "<br><strong>Attribute is : </strong>",  input$attr, 
+                          "<br><strong> Value : </strong>", counties$col_name/100)
+    
+    counties %>% leaflet() %>% addTiles() %>% 
+      addPolygons(
+          fillColor = ~pal(col_name/100),
+            weight = 2,
+            opacity = 1,
+            color = "blue", # we can change it or remove it
+            dashArray = "3",
+            fillOpacity = 0.7,
+            highlight = highlightOptions(
+              weight = 5,
+              color = "#666",
+              dashArray = "",
+              fillOpacity = 0.7,
+              bringToFront = TRUE), 
+          popup = state_popup
+      ) %>% 
+      
+      addLegend("bottomright", pal = pal, values = ~col_name/100,
+          title = ,
+          #labFormat = labelFormat(prefix = "$"),
+          opacity = 1   
+          )
+    
+    })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+
+```
+
+
+
+
+#####################
+######################
+######################
+
+### Now we map MDC 
+
+```{r}
+# library(dplyr)
+# MCD_cnty = renamed_data %>% filter(MDC == "Diabetes Mellitus") 
+# MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+#   group_by(PCnty) %>% summarise(BC = sum(BC), BC = sum(BC), BA = sum(BA), 
+#                                 TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV))
+# MCD_cnty
+```
+
+
+
+
+
+```{r}
+
+ui <- fluidPage( 
+  selectInput("attr", "Name of MDC Category",  
+               c("Diabetes Mellitus",
+                 "Diseases And Disorders Of The Cardiovascular System", 
+                 "Diseases And Disordes Of The Respiratory System" , 
+                 "HIV Infection" , 
+                 "Mental Diseases And Disorders", 
+                 "Newborns And Other Neonates", 
+                 "Substance Abuse")
+               ), # Now outputs
+  selectInput("var", "Name of Attribute",  c("BC","BA", "TIA" , "TBERV" , "TERV")),
+  leafletOutput("mymap")   
+  )
+
+
+
+server <- function(input, output) {
+  
+  output$mymap <- renderLeaflet({   
+    
+    MCD_cnty = joined_data %>% filter(MDC == input$attr) 
+    MCD_cnty = MCD_cnty %>% mutate( BC = BC*10^3/TBC, BA = BA*10^3/TBC, TIA = TIA*10^3/TBC, 
+                                    TBERV = TBERV*10^3/TBC, TERV = TERV*10^3/TBC)
+    MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+          group_by(PCnty) %>% summarise(BC = sum(BC), BA = sum(BA), 
+                                TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV)
+                                )
+    ## To keep it dafe: 
+    #MCD_cnty = renamed_data %>% filter(MDC == input$attr) 
+    #MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+    #      group_by(PCnty) %>% summarise(BC = sum(BC), BC = sum(BC), BA = sum(BA), 
+    #                            TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV))
+    
+    
+    adjusted_data <- MCD_cnty[,c("PCnty", input$var)]
+    names(adjusted_data) <- c("NAME_2", "col_name")
+    
+    
+    # get county level spatial polygons for the United States  
+    counties <- getData("GADM", country = "USA", level = 2)
+    
+    # filter down to just New York State Counties
+    counties <- counties[counties@data$NAME_1 == "New York",]
+    bins <- c(0, 25, 45, 60, 80, 170, 250, 400, 700, Inf)
+    pal <- colorBin("YlOrRd", domain = density, bins = bins)
+    
+    ## In our data we have St Lawrence but in our SP obkect we have Saint lawrence, so we 
+    ## fix it by gsub()
+    adjusted_data$NAME_2 = gsub("St Lawrence", "Saint Lawrence", adjusted_data$NAME_2)
+    counties@data = left_join(counties@data, adjusted_data)
+    
+    
+    
+    #pal <- brewer.pal(15, "YlGnBu")
+    
+    
+    
+    state_popup <- paste0("<strong>County: </strong>", 
+                          counties$NAME_2, 
+                          "<br><strong>MDC category : </strong>",  input$attr, 
+                          "<br><strong> Value per 1K : </strong>", round(counties$col_name, 3) ) 
+    
+    counties %>% leaflet() %>% addTiles() %>% 
+      addPolygons(
+          fillColor = ~pal(col_name), 
+            weight = 2,
+            opacity = 1,
+            color = "blue", # we can change it or remove it
+            dashArray = "3",
+            fillOpacity = 0.7,
+            highlight = highlightOptions(
+              weight = 5,
+              color = "#666",
+              dashArray = "",
+              fillOpacity = 0.7,
+              bringToFront = TRUE), 
+          popup = state_popup
+      ) %>% 
+      
+      addLegend("bottomright", pal = pal, values = ~col_name,
+          title = ,
+          #labFormat = labelFormat(prefix = "$"),
+          opacity = 1   
+          )
+    
+    })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+
+```

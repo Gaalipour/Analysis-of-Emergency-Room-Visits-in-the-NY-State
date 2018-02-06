@@ -1,0 +1,455 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#### lets just plot the map
+```{r}
+library(shiny)
+library(geojsonio)
+library(ggmap)
+library(ggplot2)
+library(zipcode)
+library(choroplethrMaps)
+library(choroplethr)
+library(dplyr)
+library(plotly)
+library(leaflet)
+library(DT)
+#your.map <- leaflet() %>% addTiles() # Generates an empty map
+#your.map # print the map
+mydata = read.csv("ER-DataSet.csv")
+mydata
+
+```
+
+
+
+
+```{r}
+renamed_data = rename(mydata, 
+                       Zip = Zip.Code, PCnty = Primary.County, Dual = Dual.Eligible, 
+                       MDC = Major.Diagnostic.Category, EDC = Episode.Disease.Category, 
+                    BC = Beneficiaries.with.Condition, BA = Beneficiaries.with.Admissions, 
+                   TIA = Total.Inpatient.Admissions, 
+                   TBERV = Beneficiaries.with.ER.Visits, 
+                   TERV = Total.ER.Visits)
+head(renamed_data)
+
+
+```
+
+
+
+```{r}
+detailed_data = read.csv("NewData_Detailed.csv")
+selected_columns = detailed_data[, c("Year", "Zip.Code", "County", "Total.Beneficiaries")] %>% 
+        rename(Zip = Zip.Code, PCnty = County, TB = Total.Beneficiaries)
+joined_data = inner_join(renamed_data, selected_columns)
+
+```
+
+```{r}
+plot_ly(joined_data, x = ~Year, y = ~TBC, type = "bar")
+```
+
+
+
+
+```{r}
+cnty_poplulation = detailed_data[, c("County",  "Total.Beneficiaries")] %>% 
+  group_by(County) %>% summarise(TBC = sum(Total.Beneficiaries)) %>% 
+    rename(PCnty = County)
+
+joined_data = inner_join(joined_data, cnty_poplulation)
+joined_data
+```
+
+
+
+
+
+## Grouping by County 
+
+```{r}
+library(dplyr)
+by_cnty_data = renamed_data[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")]%>% 
+  group_by(PCnty) %>% 
+        summarise( BC = sum(BC), BA = sum(BA), 
+                   TIA = sum(TIA), 
+                   TBERV = sum(TBERV), 
+                   TERV = sum(TERV))
+(by_cnty_data)
+
+```
+
+
+
+
+
+
+```{r}
+ 
+by_zip_data = select(renamed_data, -c(Year, PCnty, Dual)) %>% 
+  group_by(Zip) %>% 
+        summarise( BC = sum(BC), BA = sum(BA), 
+                   TIA = sum(TIA), 
+                   TBERV = sum(TBERV), 
+                   TERV = sum(TERV))
+(by_zip_data)
+
+
+```
+
+
+
+
+
+```{r}
+data("zipcode")
+somedata = merge(by_zip_data, zipcode, by.x='Zip', by.y='zip')
+somedata
+
+```
+
+
+
+```{r}
+g = ggplot(data=somedata) + geom_point(aes(x=longitude, y=latitude, colour=BC/1000))
+g
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+leaflet(somedata) %>% addTiles() %>% 
+  addCircles(lng = ~longitude, lat = ~latitude, weight = 1,
+    radius = ~TIA/10^2 , popup = ~city, color = "blue"
+  ) %>% addMarkers(
+  clusterOptions = markerClusterOptions()
+)
+
+### Also add HIV
+
+```
+
+
+
+
+
+### Also add HIV
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Now let's build the RShiny app
+
+```{r}
+library(shiny)
+library(dplyr)
+library(plotly)
+library(ggplot2)
+library(leaflet)
+ui <- fluidPage( 
+  radioButtons("attr", "Name of Attribute",  c("BC","BA", "TIA" , "TBERV" , "TERV"), inline = TRUE), # Now outputs
+  leafletOutput("mymap")   
+  )
+
+
+
+server <- function(input, output) {
+  
+  output$mymap <- renderLeaflet({   
+    
+    col_name <- input$attr
+    # col_name = as.numeric(input$attr)
+    # adjusted_data = somedata %>% select(longitude, latitude, col_name)
+    adjusted_data <- somedata[,c("longitude", "latitude", input$attr, "city")]
+    
+    #adjusted_data = data.frame(somedata[,c(longitude, latitude, input$attr) ] )   
+    names(adjusted_data) <- c("longitude", "latitude", "col_name", "city")
+    
+    pal <- colorNumeric(   palette = "Blues", domain = adjusted_data$col_name/100)
+    
+    
+    leaflet(adjusted_data) %>% addTiles() %>%
+  addCircles(lng = ~longitude, lat = ~latitude, weight = 1,
+    radius = ~col_name/10 , popup = ~city, color = "blue" ) # could use colo = ~pal(col_name)
+    
+    })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+
+```
+
+## Choroplethe:
+
+
+```{r}
+
+# load required libraries - note use install.packages() if you don't have these installed already
+library(sp)
+library(raster)
+library(maptools)
+library(leaflet)
+library(DT)
+library(dplyr)
+
+# get county level spatial polygons for the United States  
+counties <- getData("GADM", country = "USA", level = 2)
+
+# filter down to just New York State Counties
+counties <- counties[counties@data$NAME_1 == "New York",]
+bins <- c(0, 10, 20, 50, 100, 200, 500, 1000, Inf)
+pal <- colorBin("YlOrRd", domain = density, bins = bins)
+
+## In our data we have St Lawrence but in our SP obkect we have Saint lawrence, so we 
+## fix it by gsub()
+by_cnty_data$PCnty = gsub("St Lawrence", "Saint Lawrence", by_cnty_data$PCnty)
+added_data =   rename(by_cnty_data, NAME_2 = PCnty) 
+counties@data = left_join(counties@data, added_data)
+
+
+
+
+state_popup <- paste0("<strong>County: </strong>", 
+                      counties$NAME_2, 
+                      "<br><strong>BC is : </strong>", 
+                      counties$BC)
+
+counties %>% leaflet() %>% addTiles() %>% 
+  addPolygons(
+      fillColor = ~pal(BC/100),
+        weight = 2,
+        opacity = 1,
+        color = "blue", # we can change it or remove it
+        dashArray = "3",
+        fillOpacity = 0.7,
+        highlight = highlightOptions(
+          weight = 5,
+          color = "#666",
+          dashArray = "",
+          fillOpacity = 0.7,
+          bringToFront = TRUE), 
+      popup = state_popup
+  )
+
+
+```
+
+
+
+### Combine Chroplothe and ShinyApp
+
+```{r}
+library(shiny)
+library(dplyr)
+library(plotly)
+library(ggplot2)
+library(leaflet)
+library(sp)
+library(raster)
+library(maptools)
+ui <- fluidPage( 
+  radioButtons("attr", "Name of Attribute",  c("BC","BA", "TIA" , "TBERV" , "TERV"), inline = TRUE), # Now outputs
+  leafletOutput("mymap")   
+  )
+
+
+
+server <- function(input, output) {
+  
+  output$mymap <- renderLeaflet({   
+    
+    
+    adjusted_data <- by_cnty_data[,c("PCnty", input$attr)]
+    names(adjusted_data) <- c("NAME_2", "col_name")
+    
+    
+    # get county level spatial polygons for the United States  
+    counties <- getData("GADM", country = "USA", level = 2)
+    
+    # filter down to just New York State Counties
+    counties <- counties[counties@data$NAME_1 == "New York",]
+    bins <- c(0, 10, 20, 50, 100, 200, 500, 1000, Inf)
+    pal <- colorBin("YlOrRd", domain = density, bins = bins)
+    
+    ## In our data we have St Lawrence but in our SP obkect we have Saint lawrence, so we 
+    ## fix it by gsub()
+    adjusted_data$NAME_2 = gsub("St Lawrence", "Saint Lawrence", adjusted_data$NAME_2)
+    counties@data = left_join(counties@data, adjusted_data)
+    
+    
+    
+    
+    state_popup <- paste0("<strong>County: </strong>", 
+                          counties$NAME_2, 
+                          "<br><strong>Attribute is : </strong>",  input$attr, 
+                          "<br><strong> Value : </strong>", counties$col_name/100)
+    
+    counties %>% leaflet() %>% addTiles() %>% 
+      addPolygons(
+          fillColor = ~pal(col_name/100),
+            weight = 2,
+            opacity = 1,
+            color = "blue", # we can change it or remove it
+            dashArray = "3",
+            fillOpacity = 0.7,
+            highlight = highlightOptions(
+              weight = 5,
+              color = "#666",
+              dashArray = "",
+              fillOpacity = 0.7,
+              bringToFront = TRUE), 
+          popup = state_popup
+      )
+    
+    })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+
+```
+
+
+
+#####################
+######################
+######################
+
+### Now we map MDC 
+
+```{r}
+library(dplyr)
+MCD_cnty = renamed_data %>% filter(MDC == "Diabetes Mellitus") 
+MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+  group_by(PCnty) %>% summarise(BC = sum(BC), BC = sum(BC), BA = sum(BA), 
+                                TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV))
+MCD_cnty
+```
+
+
+
+
+```{r}
+library(shiny)
+library(dplyr)
+library(plotly)
+library(ggplot2)
+library(leaflet)
+library(sp)
+library(raster)
+library(maptools)
+ui <- fluidPage( 
+  selectInput("attr", "Name of MDC Category",  
+               c("Diabetes Mellitus",
+                 "Diseases And Disorders Of The Cardiovascular System", 
+                 "Diseases And Disordes Of The Respiratory System" , 
+                 "HIV Infection" , 
+                 "Mental Diseases And Disorders", 
+                 "Newborns And Other Neonates", 
+                 "Substance Abuse")
+               ), # Now outputs
+  selectInput("var", "Name of Attribute",  c("BC","BA", "TIA" , "TBERV" , "TERV")),
+  leafletOutput("mymap")   
+  )
+
+
+
+server <- function(input, output) {
+  
+  output$mymap <- renderLeaflet({   
+    
+    MCD_cnty = joined_data %>% filter(MDC == input$attr) 
+    MCD_cnty = MCD_cnty %>% mutate( BC = BC*10^6/TBC, BA = BA*10^6/TBC, TIA = TIA*10^6/TBC, 
+                                    TBERV = TBERV*10^6/TBC, TERV = TERV*10^6/TBC)
+    MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+          group_by(PCnty) %>% summarise(BC = sum(BC), BA = sum(BA), 
+                                TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV)
+                                )
+    ## To keep it dafe: 
+    #MCD_cnty = renamed_data %>% filter(MDC == input$attr) 
+    #MCD_cnty =   MCD_cnty[, c("PCnty", "BC","BA", "TIA" , "TBERV" , "TERV")] %>% 
+    #      group_by(PCnty) %>% summarise(BC = sum(BC), BC = sum(BC), BA = sum(BA), 
+    #                            TIA = sum(TIA), TBERV = sum(TBERV), TERV = sum(TERV))
+    
+    
+    adjusted_data <- MCD_cnty[,c("PCnty", input$var)]
+    names(adjusted_data) <- c("NAME_2", "col_name")
+    
+    
+    # get county level spatial polygons for the United States  
+    counties <- getData("GADM", country = "USA", level = 2)
+    
+    # filter down to just New York State Counties
+    counties <- counties[counties@data$NAME_1 == "New York",]
+    bins <- c(0, 10, 20, 50, 100, 200, 500, 1000, Inf)
+    pal <- colorBin("YlOrRd", domain = density, bins = bins)
+    
+    ## In our data we have St Lawrence but in our SP obkect we have Saint lawrence, so we 
+    ## fix it by gsub()
+    adjusted_data$NAME_2 = gsub("St Lawrence", "Saint Lawrence", adjusted_data$NAME_2)
+    counties@data = left_join(counties@data, adjusted_data)
+    
+    
+    
+    
+    state_popup <- paste0("<strong>County: </strong>", 
+                          counties$NAME_2, 
+                          "<br><strong>Attribute is : </strong>",  input$attr, 
+                          "<br><strong> Value : </strong>", counties$col_name/100)
+    
+    counties %>% leaflet() %>% addTiles() %>% 
+      addPolygons(
+          fillColor = ~pal(col_name/100), 
+            weight = 2,
+            opacity = 1,
+            color = "blue", # we can change it or remove it
+            dashArray = "3",
+            fillOpacity = 0.7,
+            highlight = highlightOptions(
+              weight = 5,
+              color = "#666",
+              dashArray = "",
+              fillOpacity = 0.7,
+              bringToFront = TRUE), 
+          popup = state_popup
+      )
+    
+    })
+  
+}
+
+
+shinyApp(server = server, ui = ui)
+
+
+```
+
+
+
+
