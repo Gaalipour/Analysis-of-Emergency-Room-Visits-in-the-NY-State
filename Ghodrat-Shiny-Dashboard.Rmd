@@ -4,7 +4,7 @@ output: html_notebook
 ---
 ```{r}
 ## ui.R ##
-setwd("~/ER-Inpatient-Visitis")
+#setwd("~/ER-Inpatient-Visitis")
 library(shiny)
 library(geojsonio)
 library(ggmap)

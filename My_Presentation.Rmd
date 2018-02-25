@@ -1,8 +1,8 @@
 ---
 title: "Medicaid Chronic Conditions, Inpatient Admissions and Emergency Room Visits by Zip Code: Beginning 2012"
 output:
-  html_notebook: default
   html_document: default
+  html_notebook: default
 ---
 
 
@@ -29,7 +29,7 @@ Url:  https://health.data.ny.gov/Health/Medicaid-Chronic-Conditions-Inpatient-Ad
 * Columns: 11
 
 ```{r message = FALSE}
-setwd("~/ER-Inpatient-Visitis")
+#setwd("~/ER-Inpatient-Visitis")
 library(shiny)
 library(geojsonio)
 library(ggmap)
@@ -45,6 +45,8 @@ library(sp)
 library(raster)
 library(maptools)
 library(RColorBrewer)
+library(GGally)
+library(corrplot)
 ```
 
 
@@ -98,14 +100,12 @@ plot_ly(outlier_out_data, x = ~Year, y = ~BC,  type = 'box', name = "BC") %>%
 
 
 ```{r}
-library(GGally)
 columns = data.frame(renamed_data[ , !names(renamed_data) %in% c("Year", "MDC", "EDC", "Zip", "PCnty", "Dual") ] )
 ggpairs(columns )
 ```
 
 
 ```{r}
-library(corrplot)
 corrplot(   cor(renamed_data[c("BC", "BA", "TIA", "TBERV", "TERV")])  )
 ```
 
